@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: fifa_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${DB_NAME:-fifa_local}
+      MYSQL_USER: ${DB_USER:-fifa_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-fifa_password}
+    ports:
+      - '3306:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/fifa_male_players.sql:/docker-entrypoint-initdb.d/01_male.sql:ro
+      - ./database/fifa_female_players.sql:/docker-entrypoint-initdb.d/02_female.sql:ro
+      - ./database/init_users.sql:/docker-entrypoint-initdb.d/00_users.sql:ro
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-p${DB_ROOT_PASSWORD:-rootpassword}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - fifa_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fifa_backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+    ports:
+      - '${BACKEND_PORT:-3000}:3000'
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - fifa_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fifa_frontend
+    restart: unless-stopped
+    ports:
+      - '${FRONTEND_PORT:-4200}:80'
+    depends_on:
+      - backend
+    networks:
+      - fifa_network
+
+volumes:
+  mysql_data:
+
+networks:
+  fifa_network:
+    driver: bridge
